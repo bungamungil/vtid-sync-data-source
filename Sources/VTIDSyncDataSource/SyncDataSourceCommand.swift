@@ -85,17 +85,12 @@ final class SyncDataSourceCommand: Command {
     
     private func handle(response: SpreadsheetValuesResponse, using context: CommandContext) {
         let values = response.values
-        let formatter = DateFormatter()
-        formatter.dateFormat = "dd MMMM"
         var channelIDs: [String] = []
         for row in 2 ..< values.count {
-            let value = values[row]
-            if value.count > 13 && value[12].string == "GRADUATED" {
-                continue
-            }
-            if value.count > 1 && !value[0].isEmpty, let channelID = value[0].string?.components(separatedBy: "\"").dropLast().last { // Row A
-                channelIDs.append(channelID)
-                let row = self.findOrCreateRow(for: channelID, from: value, using: (context, formatter))
+            let vtuber = values[row]
+            if !vtuber.isGraduated, let ch = vtuber.asSourceTableRow {
+                channelIDs.append(ch.channelID)
+                let row = self.findOrCreateRow(for: ch.channelID, from: ch, using: context)
                 do {
                     try row.save(on: context.db).wait()
                 } catch {
@@ -107,33 +102,23 @@ final class SyncDataSourceCommand: Command {
         self.removeRowsNotIncluded(in: channelIDs, using: context)
     }
     
-    private func findOrCreateRow(for channelID: String, from value: [Value], using: (context: CommandContext, formatter: DateFormatter)) -> SourceTableRowModel {
+    private func findOrCreateRow(for channelID: String, from ch: SourceTableRow, using context: CommandContext) -> SourceTableRowModel {
         let row = (
-            try? SourceTableRowModel.query(on: using.context.db)
+            try? SourceTableRowModel.query(on: context.db)
                 .filter(\.$channelID, .equal, channelID)
                 .first()
                 .wait()
             ) ?? SourceTableRowModel(channelID: channelID)
-        using.context.console.output("Found channel ID : ", style: .init(color: .brightMagenta), newLine: false)
-        using.context.console.output("\(channelID)", style: .init(color: .brightMagenta, isBold: true), newLine: false)
-        if value.count > 2 && !value[1].isEmpty { // Row B
-            using.context.console.output(" named : ", style: .init(color: .brightMagenta), newLine: false)
-            using.context.console.output("\(value[1].string ?? "")", style: .init(color: .brightMagenta, isBold: true), newLine: false)
-            row.vtuberName = value[1].string
-        }
-        if value.count > 8 && !value[7].isEmpty { // Row H
-            row.vtuberPersona = value[7].string
-        }
-        if value.count > 12 && !value[11].isEmpty, let dateStr = value[11].string { // Row L
-            row.vtuberBirthday = using.formatter.date(from: dateStr)
-        }
-        if value.count > 13 && !value[12].isEmpty { // Row M
-            row.vtuberAffiliation = value[12].string
-        }
-        if value.count > 14 && !value[13].isEmpty { // Row N
-            row.vtuberAffiliationLogo = value[13].string?.components(separatedBy: "\"").dropLast().last
-        }
-        using.context.console.output("", newLine: true)
+        context.console.output("Found channel ID : ", style: .init(color: .brightMagenta), newLine: false)
+        context.console.output("\(channelID)", style: .init(color: .brightMagenta, isBold: true), newLine: false)
+        context.console.output(" named : ", style: .init(color: .brightMagenta), newLine: false)
+        context.console.output("\(ch.vtuberName ?? "")", style: .init(color: .brightMagenta, isBold: true), newLine: false)
+        row.vtuberName = ch.vtuberName
+        row.vtuberPersona = ch.vtuberPersona
+        row.vtuberBirthday = ch.vtuberBirthday
+        row.vtuberAffiliation = ch.vtuberAffiliation
+        row.vtuberAffiliationLogo = ch.vtuberAffiliationLogo
+        context.console.output("", newLine: true)
         return row
     }
     
@@ -154,4 +139,50 @@ final class SyncDataSourceCommand: Command {
         context.console.error(String(describing: error))
     }
 
+}
+
+
+extension Array where Element == Value {
+    
+    fileprivate var asSourceTableRow: SourceTableRow? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd MMMM"
+        if self.count > 1 && !self[0].isEmpty, let channelID = self[0].string?.components(separatedBy: "\"").dropLast().last {
+            var row = _SourceTableRow(channelID: channelID)
+            if self.count > 2 && !self[1].isEmpty { // Row B
+                row.vtuberName = self[1].string
+            }
+            if self.count > 8 && !self[7].isEmpty { // Row H
+                row.vtuberPersona = self[7].string
+            }
+            if self.count > 12 && !self[11].isEmpty, let dateStr = self[11].string { // Row L
+                row.vtuberBirthday = formatter.date(from: dateStr)
+            }
+            if self.count > 13 && !self[12].isEmpty { // Row M
+                row.vtuberAffiliation = self[12].string
+            }
+            if self.count > 14 && !self[13].isEmpty { // Row N
+                row.vtuberAffiliationLogo = self[13].string?.components(separatedBy: "\"").dropLast().last
+            }
+            return row
+        }
+        return nil
+    }
+    
+    fileprivate var isGraduated: Bool {
+        return self.count > 13 && self[12].string == "GRADUATED"
+    }
+    
+}
+
+
+fileprivate struct _SourceTableRow: SourceTableRow {
+    var channelID: String
+    var vtuberName: String?
+    var vtuberPersona: String?
+    var vtuberBirthday: Date?
+    var vtuberAffiliation: String?
+    var vtuberAffiliationLogo: String?
+    var createdAt: Date?
+    var updatedAt: Date?
 }
