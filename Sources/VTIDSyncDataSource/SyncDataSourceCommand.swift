@@ -43,11 +43,11 @@ final class SyncDataSourceCommand: Command {
             defer {
                 sem.signal()
             }
-            if let unwrappedData = data {
-                self.handle(data: unwrappedData, using: context)
-            }
             if let unwrappedError = error {
-                self.handle(error: unwrappedError, using: context)
+                return self.handle(error: unwrappedError, using: context)
+            }
+            if let unwrappedData = data {
+                return self.handle(data: unwrappedData, using: context)
             }
         }
         task.resume()
