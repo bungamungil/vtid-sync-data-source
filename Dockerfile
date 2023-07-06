@@ -51,6 +51,7 @@ RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
     && apt-get -q install -y \
       ca-certificates \
       tzdata \
+      libcurl4 \  
     && rm -r /var/lib/apt/lists/*
 
 # Create a vtid user and group with /app as its home directory
