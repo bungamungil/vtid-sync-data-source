@@ -67,6 +67,8 @@ final class SyncDataSourceCommand: Command {
     
     private func handle(response: SpreadsheetValuesResponse, using context: CommandContext) {
         let values = response.values
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM/dd/yyyy"
         for row in 2 ..< values.count {
             let value = values[row]
             if value.count > 13 && value[12] == "GRADUATED" {
@@ -85,12 +87,16 @@ final class SyncDataSourceCommand: Command {
                 if value.count > 8 && !value[7].isEmpty { // Row H
                     row.vtuberPersona = value[7]
                 }
+                if value.count > 12 && !value[11].isEmpty { // Row L
+                    row.vtuberBirthday = formatter.date(from: value[11])
+                }
                 if value.count > 13 && !value[12].isEmpty { // Row M
                     row.vtuberAffiliation = value[12]
                 }
                 if value.count > 14 && !value[13].isEmpty { // Row N
-                    row.vtuberAffiliation = value[13]
+                    row.vtuberAffiliationLogo = value[13]
                 }
+                context.console.output("", newLine: true)
                 do {
                     try row.save(on: context.db).wait()
                 } catch {
