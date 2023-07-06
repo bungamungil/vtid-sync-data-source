@@ -11,6 +11,10 @@ import Foundation
 import VTIDCommandUtils
 import VTIDCore
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 
 final class SyncDataSourceCommand: Command {
     
