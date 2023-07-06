@@ -88,30 +88,29 @@ final class SyncDataSourceCommand: Command {
         formatter.dateFormat = "dd MMMM"
         for row in 2 ..< values.count {
             let value = values[row]
-            if value.count > 13 && value[12] == "GRADUATED" {
+            if value.count > 13 && value[12].string == "GRADUATED" {
                 continue
             }
-            if value.count > 1 && !value[0].isEmpty { // Row A
-                let channelID = value[0].components(separatedBy: "\"").dropLast().last!
+            if value.count > 1 && !value[0].isEmpty, let channelID = value[0].string?.components(separatedBy: "\"").dropLast().last { // Row A
                 let row = SourceTableRowModel(channelID: channelID)
                 context.console.output("Found channel ID : ", style: .init(color: .brightMagenta), newLine: false)
                 context.console.output("\(channelID)", style: .init(color: .brightMagenta, isBold: true), newLine: false)
                 if value.count > 2 && !value[1].isEmpty { // Row B
                     context.console.output(" named : ", style: .init(color: .brightMagenta), newLine: false)
-                    context.console.output("\(value[1])", style: .init(color: .brightMagenta, isBold: true), newLine: false)
-                    row.vtuberName = value[1]
+                    context.console.output("\(value[1].string ?? "")", style: .init(color: .brightMagenta, isBold: true), newLine: false)
+                    row.vtuberName = value[1].string
                 }
                 if value.count > 8 && !value[7].isEmpty { // Row H
-                    row.vtuberPersona = value[7]
+                    row.vtuberPersona = value[7].string
                 }
-                if value.count > 12 && !value[11].isEmpty { // Row L
-                    row.vtuberBirthday = formatter.date(from: value[11])
+                if value.count > 12 && !value[11].isEmpty, let dateStr = value[11].string { // Row L
+                    row.vtuberBirthday = formatter.date(from: dateStr)
                 }
                 if value.count > 13 && !value[12].isEmpty { // Row M
-                    row.vtuberAffiliation = value[12]
+                    row.vtuberAffiliation = value[12].string
                 }
                 if value.count > 14 && !value[13].isEmpty { // Row N
-                    row.vtuberAffiliationLogo = value[13].components(separatedBy: "\"").dropLast().last
+                    row.vtuberAffiliationLogo = value[13].string?.components(separatedBy: "\"").dropLast().last
                 }
                 context.console.output("", newLine: true)
                 do {
@@ -125,7 +124,7 @@ final class SyncDataSourceCommand: Command {
     }
     
     private func handle(error: Error, using context: CommandContext) {
-        context.console.error(error.localizedDescription)
+        context.console.error(String(describing: error))
     }
 
 }
