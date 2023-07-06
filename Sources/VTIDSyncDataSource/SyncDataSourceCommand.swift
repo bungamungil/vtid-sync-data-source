@@ -31,7 +31,14 @@ final class SyncDataSourceCommand: Command {
         let accessToken = signature.bearerToken ?? context.console.ask("Bearer Token : ")
         let sem = DispatchSemaphore(value: 0)
         let URLString = "https://sheets.googleapis.com/v4/spreadsheets/\(Environment.get("SPREADSHEET_ID") ?? "")/values/\(Environment.get("SPREADSHEET_RANGE") ?? "")"
-        let request = createRequest(for: URL(string: URLString)!, with: accessToken)
+        let URL = createURL(
+            string: URLString,
+            queryParameters: [
+                "dateTimeRenderOption": "FORMATTED_STRING",
+                "valueRenderOption": "FORMULA",
+            ]
+        )
+        let request = createRequest(for: URL, with: accessToken)
         let task = URLSession.shared.dataTask(with: request) { data, urlResponse, error in
             defer {
                 sem.signal()
@@ -45,6 +52,16 @@ final class SyncDataSourceCommand: Command {
         }
         task.resume()
         sem.wait()
+    }
+    
+    private func createURL(string: String, queryParameters: [String: String]) -> URL {
+        var URLComponents = URLComponents(string: string)!
+        URLComponents.queryItems = queryParameters.map { key, value in
+            URLQueryItem(name: key, value: value)
+        }
+        URLComponents.percentEncodedQuery = URLComponents.percentEncodedQuery?
+            .replacingOccurrences(of: "+", with: "%2B")
+        return URLComponents.url!
     }
     
     private func createRequest(for url: URL, with bearerToken: String) -> URLRequest {
@@ -68,14 +85,14 @@ final class SyncDataSourceCommand: Command {
     private func handle(response: SpreadsheetValuesResponse, using context: CommandContext) {
         let values = response.values
         let formatter = DateFormatter()
-        formatter.dateFormat = "MM/dd/yyyy"
+        formatter.dateFormat = "dd MMMM"
         for row in 2 ..< values.count {
             let value = values[row]
             if value.count > 13 && value[12] == "GRADUATED" {
                 continue
             }
             if value.count > 1 && !value[0].isEmpty { // Row A
-                let channelID = value[0]
+                let channelID = value[0].components(separatedBy: "\"").dropLast().last!
                 let row = SourceTableRowModel(channelID: channelID)
                 context.console.output("Found channel ID : ", style: .init(color: .brightMagenta), newLine: false)
                 context.console.output("\(channelID)", style: .init(color: .brightMagenta, isBold: true), newLine: false)
@@ -94,7 +111,7 @@ final class SyncDataSourceCommand: Command {
                     row.vtuberAffiliation = value[12]
                 }
                 if value.count > 14 && !value[13].isEmpty { // Row N
-                    row.vtuberAffiliationLogo = value[13]
+                    row.vtuberAffiliationLogo = value[13].components(separatedBy: "\"").dropLast().last
                 }
                 context.console.output("", newLine: true)
                 do {
