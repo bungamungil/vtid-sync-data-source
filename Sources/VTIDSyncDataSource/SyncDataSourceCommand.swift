@@ -7,6 +7,7 @@
 
 import ConsoleKit
 import FluentKit
+import FluentSQL
 import Foundation
 import VTIDCommandUtils
 import VTIDCore
@@ -86,39 +87,65 @@ final class SyncDataSourceCommand: Command {
         let values = response.values
         let formatter = DateFormatter()
         formatter.dateFormat = "dd MMMM"
+        var channelIDs: [String] = []
         for row in 2 ..< values.count {
             let value = values[row]
             if value.count > 13 && value[12].string == "GRADUATED" {
                 continue
             }
             if value.count > 1 && !value[0].isEmpty, let channelID = value[0].string?.components(separatedBy: "\"").dropLast().last { // Row A
-                let row = SourceTableRowModel(channelID: channelID)
-                context.console.output("Found channel ID : ", style: .init(color: .brightMagenta), newLine: false)
-                context.console.output("\(channelID)", style: .init(color: .brightMagenta, isBold: true), newLine: false)
-                if value.count > 2 && !value[1].isEmpty { // Row B
-                    context.console.output(" named : ", style: .init(color: .brightMagenta), newLine: false)
-                    context.console.output("\(value[1].string ?? "")", style: .init(color: .brightMagenta, isBold: true), newLine: false)
-                    row.vtuberName = value[1].string
-                }
-                if value.count > 8 && !value[7].isEmpty { // Row H
-                    row.vtuberPersona = value[7].string
-                }
-                if value.count > 12 && !value[11].isEmpty, let dateStr = value[11].string { // Row L
-                    row.vtuberBirthday = formatter.date(from: dateStr)
-                }
-                if value.count > 13 && !value[12].isEmpty { // Row M
-                    row.vtuberAffiliation = value[12].string
-                }
-                if value.count > 14 && !value[13].isEmpty { // Row N
-                    row.vtuberAffiliationLogo = value[13].string?.components(separatedBy: "\"").dropLast().last
-                }
-                context.console.output("", newLine: true)
+                channelIDs.append(channelID)
+                let row = self.findOrCreateRow(for: channelID, from: value, using: (context, formatter))
                 do {
                     try row.save(on: context.db).wait()
                 } catch {
                     self.handle(error: error, using: context)
                     continue
                 }
+            }
+        }
+        self.removeRowsNotIncluded(in: channelIDs, using: context)
+    }
+    
+    private func findOrCreateRow(for channelID: String, from value: [Value], using: (context: CommandContext, formatter: DateFormatter)) -> SourceTableRowModel {
+        let row = (
+            try? SourceTableRowModel.query(on: using.context.db)
+                .filter(\.$channelID, .equal, channelID)
+                .first()
+                .wait()
+            ) ?? SourceTableRowModel(channelID: channelID)
+        using.context.console.output("Found channel ID : ", style: .init(color: .brightMagenta), newLine: false)
+        using.context.console.output("\(channelID)", style: .init(color: .brightMagenta, isBold: true), newLine: false)
+        if value.count > 2 && !value[1].isEmpty { // Row B
+            using.context.console.output(" named : ", style: .init(color: .brightMagenta), newLine: false)
+            using.context.console.output("\(value[1].string ?? "")", style: .init(color: .brightMagenta, isBold: true), newLine: false)
+            row.vtuberName = value[1].string
+        }
+        if value.count > 8 && !value[7].isEmpty { // Row H
+            row.vtuberPersona = value[7].string
+        }
+        if value.count > 12 && !value[11].isEmpty, let dateStr = value[11].string { // Row L
+            row.vtuberBirthday = using.formatter.date(from: dateStr)
+        }
+        if value.count > 13 && !value[12].isEmpty { // Row M
+            row.vtuberAffiliation = value[12].string
+        }
+        if value.count > 14 && !value[13].isEmpty { // Row N
+            row.vtuberAffiliationLogo = value[13].string?.components(separatedBy: "\"").dropLast().last
+        }
+        using.context.console.output("", newLine: true)
+        return row
+    }
+    
+    private func removeRowsNotIncluded(in channelIDs: [String], using context: CommandContext) {
+        if let db = context.db as? SQLDatabase {
+            do {
+                try db.delete(from: SourceTableRowModel.schema)
+                    .where("channel_id", .notIn, channelIDs)
+                    .run()
+                    .wait()
+            } catch {
+                self.handle(error: error, using: context)
             }
         }
     }
